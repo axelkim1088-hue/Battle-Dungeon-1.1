@@ -1,0 +1,249 @@
+import pygame
+import time
+import random
+pygame.font.init()
+
+WIDTH, HEIGHT = 800, 600
+WIN = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption('Battle Dungeon')
+
+class Player:
+    def __init__(self, x, y, width, height, Vel, Screen_Width, Screen_Height):
+        self.rect = pygame.Rect(x, y, width, height)
+        self.Vel = Vel
+        self.Screen_Width = Screen_Width
+        self.Screen_Height = Screen_Height
+        self.attack_cooldown = 0
+        self.attack_timer = 0
+        self.current_attack = None
+    
+    def move(self, keys):
+        if (keys[pygame.K_LEFT] or keys[pygame.K_a]) and self.rect.x - self.Vel >= 0:
+            self.rect.x -= self.Vel
+        if (keys[pygame.K_RIGHT] or keys[pygame.K_d]) and self.rect.x + self.Vel + self.rect.width <= self.Screen_Width:
+            self.rect.x += self.Vel
+        if (keys[pygame.K_UP] or keys[pygame.K_w]) and self.rect.y - self.Vel >= 0:
+            self.rect.y -= self.Vel
+        if (keys[pygame.K_DOWN] or keys[pygame.K_s]) and self.rect.y + self.Vel + self.rect.height <= self.Screen_Height:
+            self.rect.y += self.Vel
+    
+    def update_cooldown(self):
+        if self.attack_cooldown > 0:
+            self.attack_cooldown -= 1
+    
+    def attack(self):
+        if self.attack_cooldown <= 0:
+            self.attack_cooldown = 30
+            return pygame.Rect(self.rect.x - 20, self.rect.y - 20, self.rect.width + 40, self.rect.height + 40)
+        return None
+    
+    def start_attack(self):
+        if self.attack_cooldown <= 0:
+            self.attack_cooldown = 120
+            self.attack_timer = 15
+            self.current_attack = pygame.Rect(self.rect.x -20, self.rect.y - 20, self.rect.width + 40, self.rect.height + 40)
+            return self.current_attack
+        return None
+    
+    def draw(self, screen, colour = (0, 255, 0)):
+        pygame.draw.rect(screen, colour, self.rect)
+
+
+class Enemy:
+    def __init__(self, x, y, width, height, speed = 2):
+        self.rect = pygame.Rect(x, y, width, height)
+        self.speed = speed
+    
+    def update(self, player_rect):
+        dx = player_rect.x - self.rect.x
+        dy = player_rect.y - self.rect.y
+        if dx != 0:
+            self.rect.x += self.speed if dx > 0 else -self.speed
+        if dy != 0:
+            self.rect.y += self.speed if dy > 0 else -self.speed
+
+    def spawn_enemies(player, level, size = 40,):
+        enemies = []
+        count  = 3 + (level - 1)
+        for _ in range(count):
+            while True:
+                x = random.randint(0, WIDTH - 40)
+                y = random.randint(0, HEIGHT - 40)
+
+                if abs(x - player.rect.x) > 100 and abs(y - player.rect.y) > 100:
+                    enemies.append(Enemy(x, y, size, size))
+                    break
+        return enemies
+    
+    def next_level(self, level):
+        self.reset()
+        self.speed = self.speed + (level - 1) * (1/3)
+    
+    def draw(self, screen, colour = (255, 0, 0)):
+        pygame.draw.rect(screen, colour, self.rect)
+
+class GameInfo:
+    LEVELS = 10
+
+    def __init__(self, level = 1):
+        self.level = level
+        self.started = False
+        self.level_start_time = 0
+    
+    def next_level(self):
+        self.level += 1
+        self.started = False
+    
+    def reset(self):
+        self.level = 1
+        self.started = False
+        self.level_start_time = 0
+
+    def game_finished(self):
+        return self.level > self.LEVELS
+    
+    def start_level(self):
+        self.started = True
+        self.level_start_time = time.time()
+
+    def get_level_time(self):
+        if not self.started:
+            return 0
+        return time.time() - self.level_start_time
+        
+clock = pygame.time.Clock()
+
+game_info = GameInfo()
+
+FONT = pygame.font.SysFont('comicsans', 30)
+
+def blit_text_centre(text):
+    render = FONT.render(text, 1, (255, 255, 255))
+    WIN.blit(render, (WIN.get_width()/2 - render.get_width()/2, WIN.get_height()/2 - render.get_height()/2,))
+
+
+BG = pygame.transform.scale(pygame.image.load('Dungeon Floor.png'), (WIDTH, HEIGHT))
+
+def draw(player, enemies, attack_rect, elapsed_time, game_info):
+    WIN.blit(BG, (0, 0))
+
+    player.draw(WIN)
+
+    for enemy in enemies:
+        enemy.draw(WIN)
+        
+    if player.attack_timer > 0:
+        attack_rect = pygame.Rect(player.rect.x - 20, player.rect.y - 20, player.rect.width + 40, player.rect.height + 40)
+        pygame.draw.rect(WIN, (255, 255, 0), attack_rect, 2)
+
+    level_text = FONT.render(f'Level: {game_info.level}', 1, (255, 255, 255))
+    WIN.blit(level_text, (550, level_text.get_height() - 30))
+
+    time_text = FONT.render(f'Time: {round(elapsed_time)}s', 1, 'white')
+    WIN.blit(time_text, (10, 10))
+
+def main():
+    run = True
+
+    level_transition = False
+
+    player = Player(380, 280, 40, 40, 5, WIDTH, HEIGHT)
+
+    start_time = time.time()
+
+    enemies = Enemy.spawn_enemies(player, game_info.level, 40)
+
+    while run:
+        clock.tick(60)
+        elapsed_time = time.time() - start_time
+
+
+        if elapsed_time >= (15 + (game_info.level - 1)*5) or len(enemies) <= 0:
+            level_transition = True
+
+            draw(player, enemies, player.current_attack, elapsed_time, game_info)
+            victory_text = (f'You beat level {game_info.level}!')
+            blit_text_centre(victory_text)
+            pygame.display.update()
+            pygame.time.delay(3000)
+            
+            draw(player, enemies, player.current_attack, elapsed_time, game_info)
+
+            game_info.next_level()
+            
+            if game_info.game_finished():
+                run = False
+                continue
+
+            enemies = Enemy.spawn_enemies(player, game_info.level, 40)
+            start_time = time.time()
+
+            level_transition = False
+            continue
+        
+        while not game_info.started:
+            blit_text_centre(f'Press any key to start level {game_info.level}')
+            pygame.display.update()
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    break
+                
+                if event.type == pygame.KEYDOWN:
+                    game_info.start_level()
+
+
+        if player.current_attack:
+            for enemy in enemies[:]:
+                if player.current_attack.colliderect(enemy.rect):
+                    enemies.remove(enemy)
+
+        hit = False
+
+        player.update_cooldown()
+        
+        for enemy in enemies:
+            enemy.update(player.rect)
+        
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                run = False
+                break
+        
+        keys = pygame.key.get_pressed()
+
+        player.move(keys)
+        
+        if player.current_attack:
+            player.current_attack.x = player.rect.x - 20
+            player.current_attack.y = player.rect.y -20
+        
+        if player.attack_timer > 0:
+            player.attack_timer -= 1
+        else:
+            player.current_attack = None
+
+        if keys[pygame.K_SPACE] and player.attack_cooldown <= 0 and player.attack_timer == 0:
+            player.start_attack()
+
+        for enemy in enemies:
+            if player.rect.colliderect(enemy.rect):
+                hit = True
+
+
+        if hit:
+            draw(player, enemies, player.current_attack, elapsed_time, game_info)
+            lose_text = FONT.render('You Died!', 1, 'white')
+            WIN.blit(lose_text, (WIDTH/2 - lose_text.get_width()/2, HEIGHT/2 - lose_text.get_height()/2))
+            pygame.display.update()
+            pygame.time.delay(2000)
+            break
+         
+        draw(player, enemies, player.current_attack, elapsed_time, game_info)
+        pygame.display.update()
+
+    
+    pygame.quit()
+
+if __name__ == '__main__':
+    main()
